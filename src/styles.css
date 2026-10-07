@@ -1,0 +1,117 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-display: "Fraunces", Georgia, serif;
+  --font-sans: "Instrument Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-ochre: var(--ochre);
+  --color-ink: var(--ink);
+  --color-bone: var(--bone);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-scenery-foreground: var(--scenery-foreground);
+  --color-scenery-shade: var(--scenery-shade);
+}
+
+:root {
+  --radius: 0.25rem;
+  --bone: oklch(0.955 0.018 85);
+  --ink: oklch(0.21 0.02 55);
+  --background: var(--bone);
+  --foreground: var(--ink);
+  --card: oklch(0.975 0.012 85);
+  --card-foreground: var(--ink);
+  --popover: var(--card);
+  --popover-foreground: var(--ink);
+  --primary: oklch(0.52 0.135 38); /* rust */
+  --primary-foreground: oklch(0.97 0.01 85);
+  --secondary: oklch(0.9 0.025 85);
+  --secondary-foreground: var(--ink);
+  --muted: oklch(0.91 0.02 85);
+  --muted-foreground: oklch(0.47 0.025 60);
+  --accent: oklch(0.47 0.07 135); /* moss */
+  --accent-foreground: oklch(0.97 0.01 85);
+  --ochre: oklch(0.72 0.13 78);
+  --destructive: oklch(0.5 0.17 28);
+  --destructive-foreground: oklch(0.97 0.01 85);
+  --border: oklch(0.21 0.02 55 / 14%);
+  --input: oklch(0.21 0.02 55 / 18%);
+  --ring: var(--primary);
+  --scenery-foreground: oklch(0.99 0.005 120);
+  --scenery-shade: oklch(0.2 0.035 150);
+  --scenery-overlay: linear-gradient(90deg, color-mix(in oklab, var(--scenery-shade) 76%, transparent), color-mix(in oklab, var(--scenery-shade) 22%, transparent));
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    background-image: radial-gradient(oklch(0.21 0.02 55 / 5%) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  h1, h2, h3 { font-family: var(--font-display); letter-spacing: 0; }
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+@keyframes marquee { to { transform: translateX(-50%); } }
+@keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 oklch(0.52 0.135 38 / 50%); } 100% { box-shadow: 0 0 0 18px transparent; } }
+
+@utility rise { animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.1, 1) both; }
+@utility marquee { animation: marquee 40s linear infinite; }
+@utility grow { transform-origin: left; animation: grow 1.2s cubic-bezier(0.2, 0.7, 0.1, 1) both; }
+@utility pulse-ring { animation: pulse-ring 1.8s ease-out infinite; }
+@utility eyebrow { font-family: var(--font-mono); font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted-foreground); }
+@utility panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+@utility lift { transition: transform .5s cubic-bezier(.2,.7,.1,1), box-shadow .5s; &:hover { transform: translateY(-4px); box-shadow: 0 18px 40px -20px oklch(0.21 0.02 55 / 35%); } }
+
+.scenery-overlay { background: var(--scenery-overlay); }
+body:has(.home-scenery) {
+  isolation: isolate;
+  background-image: none;
+  color: var(--scenery-foreground);
+  --background: transparent;
+  --foreground: var(--scenery-foreground);
+  --muted-foreground: color-mix(in oklab, var(--scenery-foreground) 82%, transparent);
+  --card: color-mix(in oklab, var(--scenery-shade) 58%, transparent);
+  --card-foreground: var(--scenery-foreground);
+  --border: color-mix(in oklab, var(--scenery-foreground) 25%, transparent);
+  --input: var(--border);
+  --muted: color-mix(in oklab, var(--scenery-foreground) 20%, transparent);
+  --scenery-overlay: linear-gradient(90deg, color-mix(in oklab, var(--scenery-shade) 78%, transparent), color-mix(in oklab, var(--scenery-shade) 42%, transparent));
+}
+body:has(.home-scenery) header {
+  background: color-mix(in oklab, var(--scenery-shade) 28%, transparent);
+}
+.home-scenery > div.overflow-hidden {
+  background: color-mix(in oklab, var(--scenery-shade) 48%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .rise, .grow, .pulse-ring, .marquee { animation: none; }
+}
