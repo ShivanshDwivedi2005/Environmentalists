@@ -1,0 +1,2 @@
+- Geographic ranking levels and drill-down lists are defined in the shared data module, so every view uses the same hierarchy.
+- Home scenery uses a CDN video asset pointer rather than a committed video, to keep media outside source control.
