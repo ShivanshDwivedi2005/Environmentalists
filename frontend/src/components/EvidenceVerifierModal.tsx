@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck, AlertTriangle, CheckCircle2, FileText, X, RefreshCw } from 'lucide-react';
 import type { Evidence, EvidenceVerificationResult } from '../types';
-import { verifyEvidence } from '../api';
+import { assetUrl, verifyEvidence } from '../api';
 
 interface EvidenceVerifierModalProps {
   evidence: Evidence;
@@ -32,7 +32,7 @@ export const EvidenceVerifierModal: React.FC<EvidenceVerifierModalProps> = ({
   let manifestObj: any = {};
   try {
     manifestObj = JSON.parse(evidence.signed_manifest);
-  } catch (e) {
+  } catch {
     manifestObj = {};
   }
 
@@ -104,7 +104,7 @@ export const EvidenceVerifierModal: React.FC<EvidenceVerifierModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="sm:col-span-1">
               <img
-                src={evidence.file_url}
+                src={assetUrl(evidence.file_url)}
                 alt="Evidence snapshot"
                 className="w-full h-36 object-cover rounded-xl border border-slate-200"
               />

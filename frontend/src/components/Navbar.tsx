@@ -1,12 +1,11 @@
 import React from 'react';
 import type { User } from '../types';
-import { ShieldCheck, MapPin, Camera, Award, BarChart3, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, MapPin, Camera, Award, BarChart3, CheckCircle2, LogOut } from 'lucide-react';
 
 interface NavbarProps {
   currentUser: User | null;
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  onSwitchUser: (email: string) => void;
   onLogout: () => void;
 }
 
@@ -14,7 +13,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentUser,
   activeTab,
   setActiveTab,
-  onSwitchUser,
+  onLogout,
 }) => {
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-xs">
@@ -37,7 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden xl:flex items-center gap-1">
             <button
               onClick={() => setActiveTab('map')}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -109,18 +108,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {currentUser.cached_points} pts
                 </div>
 
-                {/* Persona Switcher Dropdown */}
-                <div className="relative">
-                  <select
-                    className="text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-800 py-1.5 px-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                    value={currentUser.email}
-                    onChange={(e) => onSwitchUser(e.target.value)}
-                  >
-                    <option value="citizen@ecotrack.org">👤 Priya Sharma (Citizen)</option>
-                    <option value="officer@nmc.gov.in">🏛️ Rajesh Patil (NMC Officer)</option>
-                    <option value="ngo@greenearth.org">🌱 Green Earth (NGO Rep)</option>
-                    <option value="admin@ecotrack.org">⚡ Admin (Super Admin)</option>
-                  </select>
+                <div className="hidden lg:block text-right">
+                  <p className="text-xs font-bold text-slate-800">{currentUser.full_name}</p>
+                  <p className="text-[10px] text-slate-500">{currentUser.email}</p>
                 </div>
 
                 {/* Role Badge */}
@@ -132,6 +122,9 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}>
                   {currentUser.role}
                 </span>
+                <button type="button" onClick={onLogout} aria-label="Sign out" title="Sign out" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                  <LogOut className="h-4 w-4" aria-hidden="true" />
+                </button>
               </div>
             )}
           </div>
@@ -139,7 +132,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
       {/* Mobile Sub-Navigation */}
-      <div className="md:hidden flex overflow-x-auto border-t border-slate-200 px-3 py-2 gap-2 bg-slate-50">
+      <div className="flex overflow-x-auto border-t border-slate-200 bg-slate-50 px-3 py-2 gap-2 xl:hidden">
         <button
           onClick={() => setActiveTab('map')}
           className={`px-3 py-1 text-xs rounded-md whitespace-nowrap ${activeTab === 'map' ? 'bg-emerald-600 text-white' : 'bg-white text-slate-700'}`}

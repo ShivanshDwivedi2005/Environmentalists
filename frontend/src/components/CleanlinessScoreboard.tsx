@@ -25,6 +25,7 @@ export const CleanlinessScoreboard: React.FC = () => {
   };
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- initial API synchronization
     fetchData();
   }, []);
 

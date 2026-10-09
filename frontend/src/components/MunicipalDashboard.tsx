@@ -1,7 +1,16 @@
-import React, { useState } from 'react';
-import { ShieldCheck, CheckCircle2, Clock, RefreshCw } from 'lucide-react';
-import type { Report, Cleanup, User } from '../types';
-import { updateReportStatus, verifyCleanup } from '../api';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Bell, CheckCircle2, Clock, Mail, RefreshCw, ShieldCheck, UserPlus, Users } from 'lucide-react';
+import type { Cleanup, MunicipalEmployeeInvite, MunicipalNotification, Report, User } from '../types';
+import {
+  acknowledgeMunicipalNotification,
+  assetUrl,
+  getMunicipalEmployees,
+  getMunicipalNotifications,
+  getMunicipalTaggedReports,
+  inviteMunicipalEmployee,
+  updateReportStatus,
+  verifyCleanup,
+} from '../api';
 
 interface MunicipalDashboardProps {
   currentUser: User;
@@ -20,9 +29,41 @@ export const MunicipalDashboard: React.FC<MunicipalDashboardProps> = ({
 }) => {
   const [selectedCrew, setSelectedCrew] = useState<Record<string, string>>({});
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [taggedReports, setTaggedReports] = useState<Report[]>([]);
+  const [notifications, setNotifications] = useState<MunicipalNotification[]>([]);
+  const [employees, setEmployees] = useState<MunicipalEmployeeInvite[]>([]);
+  const [employeeId, setEmployeeId] = useState('');
+  const [employeeEmail, setEmployeeEmail] = useState('');
+  const [employeeName, setEmployeeName] = useState('');
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const canVerify = currentUser.role === 'MUNICIPAL' || currentUser.role === 'ADMIN';
+  const hasMunicipalInbox = currentUser.role === 'MUNICIPAL';
+
+  const loadMunicipalData = useCallback(async () => {
+    if (!hasMunicipalInbox) return;
+    try {
+      const [tagged, notices, staff] = await Promise.all([
+        getMunicipalTaggedReports(),
+        getMunicipalNotifications(),
+        getMunicipalEmployees(),
+      ]);
+      setTaggedReports(tagged);
+      setNotifications(notices);
+      setEmployees(staff);
+    } catch (caught) {
+      setFeedback(caught instanceof Error ? caught.message : 'Could not load municipal workspace.');
+    }
+  }, [hasMunicipalInbox]);
+
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- synchronize municipal workspace data
+    loadMunicipalData();
+  }, [currentUser.id, loadMunicipalData]);
 
   const pendingCleanups = cleanups.filter((c) => c.status === 'SUBMITTED');
-  const activeReports = reports.filter((r) => r.status !== 'CLEANED_AND_VERIFIED');
+  const managedReports = hasMunicipalInbox && taggedReports.length ? taggedReports : reports;
+  const activeReports = managedReports.filter((r) => !['CLEANED_AND_VERIFIED', 'CLEANUP_SUBMITTED'].includes(r.status));
 
   const handleAssignCrew = async (reportId: string) => {
     const crewName = selectedCrew[reportId] || 'NMC Sanitation Rapid Response Team';
@@ -30,6 +71,7 @@ export const MunicipalDashboard: React.FC<MunicipalDashboardProps> = ({
       setLoadingAction(`assign-${reportId}`);
       await updateReportStatus(reportId, 'ASSIGNED', crewName);
       onDataRefresh();
+      await loadMunicipalData();
     } catch (err: any) {
       alert(err.message || 'Failed to assign team');
     } finally {
@@ -46,12 +88,68 @@ export const MunicipalDashboard: React.FC<MunicipalDashboardProps> = ({
         approve ? 'Inspected by Municipal Sanitation Officer. Site sanitized.' : 'Insufficient cleanup. Area requires re-work.'
       );
       onDataRefresh();
+      await loadMunicipalData();
     } catch (err: any) {
       alert(err.message || 'Verification failed');
     } finally {
       setLoadingAction(null);
     }
   };
+
+  const handleInviteEmployee = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLoadingAction('invite-employee');
+    setFeedback(null);
+    try {
+      await inviteMunicipalEmployee({
+        employee_id: employeeId.trim(),
+        email: employeeEmail.trim(),
+        full_name: employeeName.trim() || undefined,
+      });
+      setEmployeeId('');
+      setEmployeeEmail('');
+      setEmployeeName('');
+      setFeedback('Employee access loaded. They can now register using this employee ID and email.');
+      await loadMunicipalData();
+    } catch (caught) {
+      setFeedback(caught instanceof Error ? caught.message : 'Could not load employee access.');
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleAcknowledge = async (notificationId: string) => {
+    setLoadingAction(`notice-${notificationId}`);
+    try {
+      await acknowledgeMunicipalNotification(notificationId);
+      await loadMunicipalData();
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  if (!canVerify) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-6 py-4">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6">
+          <h2 className="flex items-center gap-2 text-2xl font-black text-emerald-950"><Users className="h-6 w-6" /> Community cleanup activity</h2>
+          <p className="mt-1 text-sm text-emerald-800">Claim an open report from the map, contact its funders, clean the site, and submit your after-photo here for municipal review.</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {cleanups.length ? cleanups.map((cleanup) => (
+            <article key={cleanup.id} className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="flex items-center justify-between gap-3">
+                <strong className="text-sm text-slate-900">Cleanup by {cleanup.organizer_name || 'community member'}</strong>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-700">{cleanup.status}</span>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">Visual improvement: {Math.round(cleanup.ai_cleanliness_delta * 100)}%</p>
+              <p className="mt-1 text-xs text-slate-500">Submitted {new Date(cleanup.created_at).toLocaleDateString()}</p>
+            </article>
+          )) : <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500 sm:col-span-2">No cleanup claims have been created yet.</p>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto py-4">
@@ -65,7 +163,7 @@ export const MunicipalDashboard: React.FC<MunicipalDashboardProps> = ({
               </span>
               <span className="text-xs text-purple-200">Enforced by RBAC Guard</span>
             </div>
-            <h2 className="text-2xl font-bold mt-1">Nagpur Municipal Corporation (NMC) Hub</h2>
+            <h2 className="text-2xl font-bold mt-1">{managedReports[0]?.municipality_name || 'Municipal Operations'} Hub</h2>
             <p className="text-xs text-purple-200 mt-0.5">
               Supervising Officer: <strong>{currentUser.full_name}</strong> | All actions are cryptographically signed & audited.
             </p>
@@ -83,6 +181,67 @@ export const MunicipalDashboard: React.FC<MunicipalDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {feedback && <div role="status" className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800">{feedback}</div>}
+
+      {hasMunicipalInbox && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900"><Bell className="h-5 w-5 text-indigo-600" /> Tagged report notifications</h3>
+                <p className="text-xs text-slate-500">Shared inbox for every employee in this municipality.</p>
+              </div>
+              <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-bold text-indigo-800">{notifications.filter((notice) => !notice.acknowledged_at).length} unread</span>
+            </div>
+            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+              {notifications.length ? notifications.map((notice) => (
+                <article key={notice.id} className={`rounded-xl border p-3 ${notice.acknowledged_at ? 'border-slate-200 bg-slate-50' : 'border-indigo-200 bg-indigo-50'}`}>
+                  <p className="text-xs font-semibold text-slate-800">{notice.message}</p>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <time className="text-[10px] text-slate-500">{new Date(notice.created_at).toLocaleString()}</time>
+                    {!notice.acknowledged_at && (
+                      <button type="button" onClick={() => handleAcknowledge(notice.id)} disabled={loadingAction === `notice-${notice.id}`} className="min-h-9 rounded-lg border border-indigo-300 bg-white px-3 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60">Mark read</button>
+                    )}
+                  </div>
+                </article>
+              )) : <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-xs text-slate-500">No tagged-report notifications yet.</p>}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-6">
+            <div className="mb-4">
+              <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900"><UserPlus className="h-5 w-5 text-emerald-600" /> Load employee access</h3>
+              <p className="text-xs text-slate-500">Employees register only when their ID and email match this allow-list.</p>
+            </div>
+            <form onSubmit={handleInviteEmployee} className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="employee-id" className="mb-1 block text-xs font-semibold text-slate-600">Employee ID</label>
+                <input id="employee-id" value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} required className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-xs focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-100" />
+              </div>
+              <div>
+                <label htmlFor="employee-email" className="mb-1 block text-xs font-semibold text-slate-600">Official email</label>
+                <input id="employee-email" type="email" value={employeeEmail} onChange={(event) => setEmployeeEmail(event.target.value)} required className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-xs focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-100" />
+              </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="employee-name" className="mb-1 block text-xs font-semibold text-slate-600">Employee name (optional)</label>
+                <input id="employee-name" value={employeeName} onChange={(event) => setEmployeeName(event.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3 text-xs focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-100" />
+              </div>
+              <button disabled={loadingAction === 'invite-employee'} className="flex min-h-11 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60 sm:col-span-2">
+                {loadingAction === 'invite-employee' && <RefreshCw className="h-3.5 w-3.5 animate-spin" />} Add employee to registration list
+              </button>
+            </form>
+            <div className="mt-4 max-h-32 space-y-2 overflow-y-auto">
+              {employees.map((employee) => (
+                <div key={employee.id} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                  <div><strong className="text-slate-800">{employee.employee_id}</strong><p className="flex items-center gap-1 text-slate-500"><Mail className="h-3 w-3" /> {employee.email}</p></div>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${employee.status === 'REGISTERED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{employee.status}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* Verification Queue (Before & After) */}
       <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs">
@@ -143,7 +302,7 @@ export const MunicipalDashboard: React.FC<MunicipalDashboardProps> = ({
                       </span>
                       {beforeEv ? (
                         <img
-                          src={beforeEv.file_url}
+                          src={assetUrl(beforeEv.file_url)}
                           alt="Before cleanup"
                           className="w-full h-44 object-cover rounded-lg border border-slate-300"
                         />
@@ -169,7 +328,7 @@ export const MunicipalDashboard: React.FC<MunicipalDashboardProps> = ({
                       </span>
                       {afterEv ? (
                         <img
-                          src={afterEv.file_url}
+                          src={assetUrl(afterEv.file_url)}
                           alt="After cleanup"
                           className="w-full h-44 object-cover rounded-lg border border-emerald-300 ring-2 ring-emerald-500/20"
                         />
@@ -230,7 +389,7 @@ export const MunicipalDashboard: React.FC<MunicipalDashboardProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {reports.map((r) => (
+              {managedReports.map((r) => (
                 <tr key={r.id} className="hover:bg-slate-50/50">
                   <td className="p-3 font-medium text-slate-800 max-w-[200px]">
                     <div>{r.address}</div>

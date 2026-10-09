@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, MapPin, Upload, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
-import { createReport } from '../api';
-import type { Report } from '../types';
+import { Camera, MapPin, Upload, RefreshCw, AlertTriangle, ShieldCheck, Building2, HandCoins } from 'lucide-react';
+import { createReport, getMunicipalities, placeCleanupBid } from '../api';
+import type { Municipality, Report } from '../types';
 
 interface ReportFormProps {
-  onReportCreated: (newReport: Report) => void;
+  onReportCreated: (newReport: Report, warning?: string) => void;
   onCancel?: () => void;
 }
 
@@ -33,6 +33,10 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
   const [description, setDescription] = useState<string>('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['Plastic Waste']);
   const [severity, setSeverity] = useState<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'>('MEDIUM');
+  const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
+  const [taggedMunicipalityId, setTaggedMunicipalityId] = useState('');
+  const [pledgeAmount, setPledgeAmount] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -55,6 +59,10 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
         { enableHighAccuracy: true, timeout: 5000 }
       );
     }
+  }, []);
+
+  useEffect(() => {
+    getMunicipalities().then(setMunicipalities).catch(() => setMunicipalities([]));
   }, []);
 
   // WebRTC Camera Handler
@@ -148,9 +156,25 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
       formData.append('description', description);
       formData.append('waste_categories_raw', JSON.stringify(selectedCategories));
       formData.append('capture_method', captureMethod);
+      if (taggedMunicipalityId) formData.append('tagged_municipality_id', taggedMunicipalityId);
 
       const created = await createReport(formData);
-      onReportCreated(created);
+      const numericPledge = Number(pledgeAmount);
+      let warning: string | undefined;
+      if (Number.isFinite(numericPledge) && numericPledge > 0) {
+        try {
+          await placeCleanupBid(created.id, {
+            amount: numericPledge,
+            contact_phone: contactPhone.trim() || undefined,
+            message: 'Initial pledge from the person who reported this site.',
+          });
+        } catch (pledgeError) {
+          warning = `The report was created, but its pledge was not recorded: ${
+            pledgeError instanceof Error ? pledgeError.message : 'please add it from the report funding panel.'
+          }`;
+        }
+      }
+      onReportCreated(created, warning);
     } catch (err: any) {
       setErrorMessage(err.message || 'Submission failed');
     } finally {
@@ -329,6 +353,38 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
             <p className="text-[10px] text-slate-400 mt-1">
               *The AI engine will cross-evaluate severity and edge clutter upon upload.
             </p>
+          </div>
+        </div>
+
+        {/* 5. Municipal notification and optional cleanup pledge */}
+        <div className="grid grid-cols-1 gap-4 border-t border-slate-100 pt-5 sm:grid-cols-2">
+          <div>
+            <label htmlFor="municipality-tag" className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-700">
+              <Building2 className="h-4 w-4 text-indigo-600" aria-hidden="true" /> Tag responsible municipality
+            </label>
+            <select
+              id="municipality-tag"
+              value={taggedMunicipalityId}
+              onChange={(event) => setTaggedMunicipalityId(event.target.value)}
+              className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
+            >
+              <option value="">Auto-assign without notification</option>
+              {municipalities.map((municipality) => (
+                <option key={municipality.id} value={municipality.id}>{municipality.name}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">An explicit tag creates a notification for every registered employee of that municipality.</p>
+          </div>
+
+          <div>
+            <label htmlFor="initial-pledge" className="mb-1 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-700">
+              <HandCoins className="h-4 w-4 text-emerald-600" aria-hidden="true" /> Initial cleanup pledge (optional)
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <input id="initial-pledge" type="number" min="0.01" step="0.01" value={pledgeAmount} onChange={(event) => setPledgeAmount(event.target.value)} placeholder="Amount ₹" className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+              <input type="tel" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} placeholder="Contact phone" aria-label="Pledge contact phone" className="min-h-11 rounded-lg border border-slate-300 px-3 text-xs outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+            </div>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">This records a public pledge and contact route; it does not transfer money.</p>
           </div>
         </div>
 

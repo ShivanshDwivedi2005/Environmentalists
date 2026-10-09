@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { CheckCircle2, ShieldCheck, X, RefreshCw, Upload, AlertCircle } from 'lucide-react';
 import type { Report, Cleanup } from '../types';
-import { createCleanup, submitCleanupEvidence } from '../api';
+import { assetUrl, createCleanup, getCleanups, submitCleanupEvidence } from '../api';
 
 interface CleanupModalProps {
   report: Report;
+  currentUserId: string;
   onClose: () => void;
   onCleanupSubmitted: (cleanup: Cleanup) => void;
 }
 
 export const CleanupModal: React.FC<CleanupModalProps> = ({
   report,
+  currentUserId,
   onClose,
   onCleanupSubmitted
 }) => {
@@ -40,8 +42,12 @@ export const CleanupModal: React.FC<CleanupModalProps> = ({
       setIsSubmitting(true);
       setErrorMsg(null);
 
-      // 1. Create or ensure cleanup object exists
-      const cleanup = await createCleanup(report.id);
+      // Resume an existing claim after an interrupted upload; otherwise claim the cleanup.
+      const reportCleanups = await getCleanups(report.id);
+      const existingCleanup = reportCleanups.find(
+        (item) => item.organizer_id === currentUserId && item.status === 'IN_PROGRESS',
+      );
+      const cleanup = existingCleanup || await createCleanup(report.id);
 
       // 2. Submit after evidence
       const formData = new FormData();
@@ -61,13 +67,13 @@ export const CleanupModal: React.FC<CleanupModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full overflow-hidden animate-in fade-in duration-200">
+      <div role="dialog" aria-modal="true" aria-labelledby="cleanup-dialog-title" className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full max-h-[90vh] overflow-y-auto animate-in fade-in duration-200">
         <div className="bg-emerald-700 px-6 py-4 text-white flex items-center justify-between">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-300" />
-            <h3 className="font-bold text-lg">Submit Verified Cleanup Evidence</h3>
+            <h3 id="cleanup-dialog-title" className="font-bold text-lg">Claim and submit cleanup evidence</h3>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-emerald-600 rounded-lg">
+          <button onClick={onClose} aria-label="Close cleanup dialog" className="min-h-11 min-w-11 p-2 hover:bg-emerald-600 rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -88,7 +94,7 @@ export const CleanupModal: React.FC<CleanupModalProps> = ({
             <div className="mt-2 flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
               {beforeEvidence ? (
                 <img
-                  src={beforeEvidence.file_url}
+                  src={assetUrl(beforeEvidence.file_url)}
                   alt="Before pollution"
                   className="w-24 h-24 object-cover rounded-lg border border-slate-300 shrink-0"
                 />

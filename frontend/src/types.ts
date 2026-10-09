@@ -73,6 +73,59 @@ export interface Report {
   evidence: Evidence[];
 }
 
+export interface Municipality {
+  id: string;
+  name: string;
+  official_email: string;
+  administrative_region_id: string;
+  verification_status: string;
+}
+
+export interface CleanupBid {
+  id: string;
+  report_id: string;
+  bidder_id: string;
+  bidder_name: string;
+  amount: number;
+  currency: string;
+  message?: string | null;
+  contact_email: string;
+  contact_phone?: string | null;
+  status: string;
+  created_at: string;
+}
+
+export interface CleanupFundingSummary {
+  report_id: string;
+  total_amount: number;
+  currency: string;
+  bid_count: number;
+  bids: CleanupBid[];
+}
+
+export interface MunicipalNotification {
+  id: string;
+  municipality_id: string;
+  report_id: string;
+  notification_type: string;
+  message: string;
+  acknowledged_at?: string | null;
+  acknowledged_by_id?: string | null;
+  created_at: string;
+}
+
+export interface MunicipalEmployeeInvite {
+  id: string;
+  municipality_id: string;
+  employee_id: string;
+  email: string;
+  full_name?: string | null;
+  status: 'INVITED' | 'REGISTERED' | 'REVOKED';
+  claimed_by_user_id?: string | null;
+  created_at: string;
+  claimed_at?: string | null;
+}
+
 export interface Cleanup {
   id: string;
   report_id: string;

@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import type { User, Report, Cleanup, Evidence } from './types';
-import { loginUser, getMe, getReports, getCleanups, removeAuthToken } from './api';
+import { ApiError, assetUrl, getAuthToken, getMe, getReports, getCleanups, removeAuthToken } from './api';
+import { AuthScreen } from './components/AuthScreen';
+import { FundingPanel } from './components/FundingPanel';
 import { Navbar } from './components/Navbar';
 import { PollutionMap } from './components/PollutionMap';
 import { ReportForm } from './components/ReportForm';
@@ -20,6 +22,7 @@ export function App() {
   const [reports, setReports] = useState<Report[]>([]);
   const [cleanups, setCleanups] = useState<Cleanup[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [dataError, setDataError] = useState<string | null>(null);
 
   // Selected entities for modals / inspect
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
@@ -35,13 +38,9 @@ export function App() {
     const initAuth = async () => {
       try {
         setIsLoading(true);
-        // Try getting existing profile or auto-login default demo citizen
-        try {
+        if (getAuthToken()) {
           const user = await getMe();
           setCurrentUser(user);
-        } catch {
-          const res = await loginUser('citizen@ecotrack.org', 'password123');
-          setCurrentUser(res.user);
         }
       } catch (err) {
         console.error('Initialization error:', err);
@@ -52,67 +51,78 @@ export function App() {
     initAuth();
   }, []);
 
-  const refreshAllData = async () => {
+  const currentUserId = currentUser?.id;
+  const refreshAllData = useCallback(async () => {
     try {
+      setDataError(null);
       const [reps, cleans] = await Promise.all([
         getReports({
           status: statusFilter || undefined,
-          severity: severityFilter || undefined
+          severity: severityFilter || undefined,
+          include_eliminated: statusFilter === 'CLEANED_AND_VERIFIED',
         }),
         getCleanups()
       ]);
       setReports(reps);
       setCleanups(cleans);
-      if (currentUser) {
+      if (currentUserId) {
         const updatedMe = await getMe();
         setCurrentUser(updatedMe);
       }
     } catch (err) {
       console.error('Failed to load data:', err);
+      if (err instanceof ApiError && err.status === 401) {
+        setCurrentUser(null);
+      } else {
+        setDataError(err instanceof Error ? err.message : 'Could not load platform data.');
+      }
     }
-  };
+  }, [currentUserId, severityFilter, statusFilter]);
 
   useEffect(() => {
-    if (currentUser) {
+    if (currentUserId) {
+      // oxlint-disable-next-line react/set-state-in-effect -- synchronize authenticated server data
       refreshAllData();
     }
-  }, [currentUser, statusFilter, severityFilter]);
+  }, [currentUserId, refreshAllData]);
 
-  const handleSwitchUser = async (email: string) => {
-    try {
-      setIsLoading(true);
-      removeAuthToken();
-      const res = await loginUser(email, 'password123');
-      setCurrentUser(res.user);
-      // Auto-navigate to appropriate view
-      if (res.user.role === 'MUNICIPAL') {
-        setActiveTab('cleanups');
-      } else {
-        setActiveTab('map');
-      }
-    } catch (err: any) {
-      alert(err.message || 'Switch persona failed');
-    } finally {
-      setIsLoading(false);
-    }
+  const handleAuthenticated = (user: User) => {
+    setCurrentUser(user);
+    setActiveTab(user.role === 'MUNICIPAL' || user.role === 'ADMIN' ? 'cleanups' : 'map');
   };
 
   const handleLogout = () => {
     removeAuthToken();
     setCurrentUser(null);
+    setReports([]);
+    setCleanups([]);
+    setSelectedReport(null);
   };
 
-  const handleReportCreated = (newReport: Report) => {
-    setReports([newReport, ...reports]);
+  const handleReportCreated = (newReport: Report, warning?: string) => {
+    setReports((existingReports) => [newReport, ...existingReports]);
     setSelectedReport(newReport);
     setActiveTab('map');
+    setDataError(warning ?? null);
   };
 
   const handleCleanupSubmitted = (newCleanup: Cleanup) => {
-    setCleanups([newCleanup, ...cleanups]);
+    setCleanups((existingCleanups) => [newCleanup, ...existingCleanups]);
     setCleanupTargetReport(null);
+    setSelectedReport(null);
     refreshAllData();
   };
+
+  if (isLoading && !currentUser) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-950 text-white">
+        <RefreshCw className="h-8 w-8 animate-spin text-emerald-400" aria-hidden="true" />
+        <span className="text-sm font-semibold">Restoring your EcoTrack session…</span>
+      </div>
+    );
+  }
+
+  if (!currentUser) return <AuthScreen onAuthenticated={handleAuthenticated} />;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800">
@@ -120,19 +130,13 @@ export function App() {
         currentUser={currentUser}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onSwitchUser={handleSwitchUser}
         onLogout={handleLogout}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Loading state */}
-        {isLoading && !currentUser ? (
-          <div className="flex flex-col items-center justify-center min-h-[50vh] gap-3">
-            <RefreshCw className="w-8 h-8 animate-spin text-emerald-600" />
-            <span className="text-sm font-semibold text-slate-600">Initializing EcoTrack Platform...</span>
-          </div>
-        ) : (
           <>
+            {dataError && <div role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{dataError}</div>}
             {/* TAB: Interactive GIS Map */}
             {activeTab === 'map' && (
               <div className="space-y-6">
@@ -184,9 +188,9 @@ export function App() {
                 </div>
 
                 {/* Main 2-Col Layout: Map + Incident Drawer */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[620px]">
+                <div className="grid h-auto grid-cols-1 gap-6 lg:h-[620px] lg:grid-cols-3">
                   {/* Left 2 Cols: Leaflet GIS Map */}
-                  <div className="lg:col-span-2 h-full">
+                  <div className="h-[420px] lg:col-span-2 lg:h-full">
                     <PollutionMap
                       reports={reports}
                       onSelectReport={(r) => setSelectedReport(r)}
@@ -195,7 +199,7 @@ export function App() {
                   </div>
 
                   {/* Right 1 Col: Selected Report Inspector / Incident List */}
-                  <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs overflow-y-auto h-full space-y-4">
+                  <div className="max-h-[620px] space-y-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xs lg:h-full">
                     {selectedReport ? (
                       <div className="space-y-4">
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -214,7 +218,7 @@ export function App() {
                         {selectedReport.evidence[0] && (
                           <div className="relative rounded-xl overflow-hidden border border-slate-200">
                             <img
-                              src={selectedReport.evidence[0].file_url}
+                              src={assetUrl(selectedReport.evidence[0].file_url)}
                               alt="Report evidence"
                               className="w-full h-44 object-cover"
                             />
@@ -232,6 +236,8 @@ export function App() {
                           <h4 className="font-bold text-slate-900 text-sm">{selectedReport.address}</h4>
                           <p className="text-xs text-slate-600 mt-1">{selectedReport.description}</p>
                         </div>
+
+                        <FundingPanel key={selectedReport.id} report={selectedReport} currentUser={currentUser} />
 
                         {/* AI Waste Tags */}
                         <div>
@@ -341,7 +347,7 @@ export function App() {
                           className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors"
                         >
                           <div className="flex items-center gap-3">
-                            <img src={ev.file_url} alt="Ev" className="w-12 h-12 rounded-lg object-cover" />
+                            <img src={assetUrl(ev.file_url)} alt="Evidence thumbnail" className="w-12 h-12 rounded-lg object-cover" />
                             <div className="text-xs">
                               <p className="font-bold text-slate-900">{r.address}</p>
                               <p className="font-mono text-[10px] text-slate-400">
@@ -370,13 +376,13 @@ export function App() {
               <UserPointsLedger />
             )}
           </>
-        )}
       </main>
 
       {/* MODAL: Cleanup Submission */}
       {cleanupTargetReport && (
         <CleanupModal
           report={cleanupTargetReport}
+          currentUserId={currentUser.id}
           onClose={() => setCleanupTargetReport(null)}
           onCleanupSubmitted={handleCleanupSubmitted}
         />
