@@ -2,6 +2,7 @@ import { useCallback, useState, useEffect } from 'react';
 import type { User, Report, Cleanup, Evidence } from './types';
 import { ApiError, assetUrl, getAuthToken, getMe, getReports, getCleanups, removeAuthToken } from './api';
 import { AuthScreen } from './components/AuthScreen';
+import { HomePage } from './components/HomePage';
 import { FundingPanel } from './components/FundingPanel';
 import { Navbar } from './components/Navbar';
 import { PollutionMap } from './components/PollutionMap';
@@ -18,6 +19,7 @@ import {
 
 export function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [publicView, setPublicView] = useState<'home' | 'login' | 'register'>('home');
   const [activeTab, setActiveTab] = useState<string>('map');
   const [reports, setReports] = useState<Report[]>([]);
   const [cleanups, setCleanups] = useState<Cleanup[]>([]);
@@ -97,6 +99,7 @@ export function App() {
     setReports([]);
     setCleanups([]);
     setSelectedReport(null);
+    setPublicView('home');
   };
 
   const handleReportCreated = (newReport: Report, warning?: string) => {
@@ -122,7 +125,25 @@ export function App() {
     );
   }
 
-  if (!currentUser) return <AuthScreen onAuthenticated={handleAuthenticated} />;
+  if (!currentUser) {
+    if (publicView === 'home') {
+      return (
+        <HomePage
+          onSignIn={() => setPublicView('login')}
+          onCreateAccount={() => setPublicView('register')}
+        />
+      );
+    }
+
+    return (
+      <AuthScreen
+        key={publicView}
+        initialMode={publicView}
+        onAuthenticated={handleAuthenticated}
+        onBackHome={() => setPublicView('home')}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800">

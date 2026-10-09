@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Building2, Leaf, LockKeyhole, LogIn, RefreshCw, UserPlus } from 'lucide-react';
+import { ArrowLeft, Building2, Leaf, LockKeyhole, LogIn, RefreshCw, UserPlus } from 'lucide-react';
 import { getMunicipalities, loginUser, registerMunicipalEmployee, registerUser } from '../api';
 import type { Municipality, User } from '../types';
 
@@ -7,10 +7,12 @@ type AuthMode = 'login' | 'register' | 'employee';
 
 interface AuthScreenProps {
   onAuthenticated: (user: User) => void;
+  initialMode?: AuthMode;
+  onBackHome: () => void;
 }
 
-export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
-  const [mode, setMode] = useState<AuthMode>('login');
+export function AuthScreen({ onAuthenticated, initialMode = 'login', onBackHome }: AuthScreenProps) {
+  const [mode, setMode] = useState<AuthMode>(initialMode);
   const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
   const [email, setEmail] = useState('citizen@ecotrack.org');
   const [password, setPassword] = useState('password123');
@@ -80,7 +82,10 @@ export function AuthScreen({ onAuthenticated }: AuthScreenProps) {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-10 text-slate-900 sm:py-16">
+    <main className="relative min-h-screen bg-slate-950 px-4 py-10 text-slate-900 sm:py-16">
+      <button type="button" onClick={onBackHome} className="mx-auto mb-4 flex min-h-11 w-full max-w-5xl items-center gap-2 rounded-xl px-1 text-sm font-bold text-slate-300 transition-colors hover:text-white">
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to home
+      </button>
       <div className="mx-auto grid w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-700 bg-white lg:grid-cols-[0.9fr_1.1fr]">
         <section className="flex flex-col justify-between bg-emerald-700 p-8 text-white sm:p-10">
           <div>
