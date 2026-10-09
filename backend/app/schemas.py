@@ -1,5 +1,6 @@
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Literal
 from datetime import datetime
+from decimal import Decimal
 from pydantic import BaseModel, EmailStr, Field
 
 # User Schemas
@@ -12,6 +13,19 @@ class UserCreate(UserBase):
     password: str
     municipality_id: Optional[str] = None
     organization_id: Optional[str] = None
+
+class MunicipalityAccountCreate(BaseModel):
+    municipality_id: str
+    email: EmailStr
+    password: str = Field(min_length=8)
+    full_name: str
+
+class MunicipalEmployeeRegister(BaseModel):
+    municipality_id: str
+    employee_id: str
+    email: EmailStr
+    password: str = Field(min_length=8)
+    full_name: str
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -131,7 +145,7 @@ class CleanupCreate(BaseModel):
     scheduled_date: Optional[datetime] = None
 
 class CleanupVerifyRequest(BaseModel):
-    status: str  # VERIFIED or REJECTED
+    status: Literal["VERIFIED", "REJECTED"]
     verification_notes: Optional[str] = None
     award_points: bool = True
 
@@ -196,3 +210,71 @@ class UserStatsOut(BaseModel):
     cleanups_completed: int
     badges: List[str] = []
     transactions: List[PointTransactionOut] = []
+
+# Cleanup funding
+class CleanupBidCreate(BaseModel):
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    message: Optional[str] = Field(default=None, max_length=1000)
+    contact_email: Optional[EmailStr] = None
+    contact_phone: Optional[str] = Field(default=None, max_length=50)
+
+class CleanupBidOut(BaseModel):
+    id: str
+    report_id: str
+    bidder_id: str
+    bidder_name: str
+    amount: Decimal
+    currency: str
+    message: Optional[str] = None
+    contact_email: EmailStr
+    contact_phone: Optional[str] = None
+    status: str
+    created_at: datetime
+
+class CleanupFundingSummary(BaseModel):
+    report_id: str
+    total_amount: Decimal
+    currency: str
+    bid_count: int
+    bids: List[CleanupBidOut]
+
+# Municipality onboarding and notifications
+class MunicipalityOut(BaseModel):
+    id: str
+    name: str
+    official_email: EmailStr
+    administrative_region_id: str
+    verification_status: str
+
+    model_config = {"from_attributes": True}
+
+class MunicipalEmployeeInviteCreate(BaseModel):
+    employee_id: str = Field(min_length=1, max_length=100)
+    email: EmailStr
+    full_name: Optional[str] = Field(default=None, max_length=255)
+    municipality_id: Optional[str] = None
+
+class MunicipalEmployeeInviteOut(BaseModel):
+    id: str
+    municipality_id: str
+    employee_id: str
+    email: EmailStr
+    full_name: Optional[str] = None
+    status: str
+    claimed_by_user_id: Optional[str] = None
+    created_at: datetime
+    claimed_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+class MunicipalNotificationOut(BaseModel):
+    id: str
+    municipality_id: str
+    report_id: str
+    notification_type: str
+    message: str
+    acknowledged_at: Optional[datetime] = None
+    acknowledged_by_id: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

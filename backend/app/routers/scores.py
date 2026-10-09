@@ -70,6 +70,8 @@ def recalculate_all_scores(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if current_user.role not in ["ADMIN", "MUNICIPAL"]:
+        raise HTTPException(status_code=403, detail="Only municipal authorities or admins can recalculate scores")
     ScoringService.recompute_all_scores(db)
     return {"status": "success", "message": "All hierarchical regional cleanliness scores recomputed successfully."}
 

@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database import engine, Base
-from app.routers import auth, reports, evidence, cleanups, scores, points, admin
+from app.routers import auth, reports, evidence, cleanups, scores, points, admin, funding, municipal
 
 # Create tables if they do not exist
 Base.metadata.create_all(bind=engine)
@@ -34,6 +34,8 @@ app.include_router(cleanups.router, prefix=settings.API_V1_STR)
 app.include_router(scores.router, prefix=settings.API_V1_STR)
 app.include_router(points.router, prefix=settings.API_V1_STR)
 app.include_router(admin.router, prefix=settings.API_V1_STR)
+app.include_router(funding.router, prefix=settings.API_V1_STR)
+app.include_router(municipal.router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def root():

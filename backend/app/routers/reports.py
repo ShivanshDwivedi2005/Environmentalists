@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
-from app.models import Report, Evidence, AdministrativeRegion, Municipality, User
+from app.models import Report, Evidence, AdministrativeRegion, Municipality, MunicipalNotification, User
 from app.schemas import ReportOut, ReportStatusUpdate
 from app.security import get_current_user
 from app.services.crypto_service import CryptoService
@@ -57,16 +57,47 @@ def find_nearest_region(db: Session, lat: float, lng: float) -> AdministrativeRe
             best_region = r
     return best_region
 
+
+def municipality_serves_region(db: Session, municipality: Municipality, region: AdministrativeRegion) -> bool:
+    """A municipality is responsible for its own region and any descendant region."""
+    current = region
+    while current:
+        if current.id == municipality.administrative_region_id:
+            return True
+        current = db.query(AdministrativeRegion).filter(
+            AdministrativeRegion.id == current.parent_id
+        ).first() if current.parent_id else None
+    return False
+
+
+def find_responsible_municipality(db: Session, region: AdministrativeRegion) -> Optional[Municipality]:
+    current = region
+    while current:
+        municipality = db.query(Municipality).filter(
+            Municipality.administrative_region_id == current.id,
+            Municipality.verification_status == "VERIFIED",
+        ).first()
+        if municipality:
+            return municipality
+        current = db.query(AdministrativeRegion).filter(
+            AdministrativeRegion.id == current.parent_id
+        ).first() if current.parent_id else None
+    return None
+
 @router.get("", response_model=List[ReportOut])
 def list_reports(
     status_filter: Optional[str] = Query(None, alias="status"),
     severity: Optional[str] = None,
     region_id: Optional[str] = None,
     mine_only: bool = False,
+    include_eliminated: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     query = db.query(Report)
+
+    if not include_eliminated:
+        query = query.filter(Report.status.notin_(["CLEANUP_SUBMITTED", "CLEANED_AND_VERIFIED"]))
 
     # Municipal user jurisdiction scoping
     if current_user.role == "MUNICIPAL":
@@ -134,6 +165,7 @@ async def create_report(
     description: str = Form(...),
     waste_categories_raw: Optional[str] = Form("[]"),
     capture_method: str = Form("IN_APP_CAMERA"),
+    tagged_municipality_id: Optional[str] = Form(None),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -154,9 +186,17 @@ async def create_report(
 
     # 4. Resolve Administrative Region & Municipality
     region = find_nearest_region(db, latitude, longitude)
-    muni = db.query(Municipality).filter(Municipality.administrative_region_id == region.id).first()
-    if not muni and region.parent_id:
-        muni = db.query(Municipality).filter(Municipality.administrative_region_id == region.parent_id).first()
+    muni = find_responsible_municipality(db, region)
+    if tagged_municipality_id:
+        tagged_muni = db.query(Municipality).filter(
+            Municipality.id == tagged_municipality_id,
+            Municipality.verification_status == "VERIFIED",
+        ).first()
+        if not tagged_muni:
+            raise HTTPException(status_code=404, detail="Tagged municipality not found or not verified")
+        if not municipality_serves_region(db, tagged_muni, region):
+            raise HTTPException(status_code=400, detail="Tagged municipality is not responsible for this area")
+        muni = tagged_muni
 
     # 5. Spatial Duplicate Detection (within 50 meters, reported in last 14 days)
     fourteen_days_ago = datetime.now(timezone.utc) - timedelta(days=14)
@@ -245,6 +285,18 @@ async def create_report(
     db.commit()
     db.refresh(evidence)
 
+    # An explicit municipal tag creates a municipality-level notification. Existing and
+    # future employees of that municipality can see it from their shared inbox.
+    if tagged_municipality_id and muni:
+        notification = MunicipalNotification(
+            municipality_id=muni.id,
+            report_id=report.id,
+            notification_type="REPORT_TAGGED",
+            message=f"New {report.severity.lower()} pollution report tagged to {muni.name}: {report.address}",
+        )
+        db.add(notification)
+        db.commit()
+
     # 9. Audit Logging & Score Recalculation
     AuditService.log(
         db,
@@ -252,7 +304,12 @@ async def create_report(
         entity_name="Report",
         entity_id=report.id,
         actor_id=current_user.id,
-        payload={"severity": report.severity, "status": report.status, "sha256": img_hash}
+        payload={
+            "severity": report.severity,
+            "status": report.status,
+            "sha256": img_hash,
+            "tagged_municipality_id": tagged_municipality_id,
+        }
     )
 
     ScoringService.calculate_region_score(db, region.id)

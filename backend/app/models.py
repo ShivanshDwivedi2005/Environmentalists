@@ -253,3 +253,65 @@ class ScoreSnapshot(Base):
 
     region = relationship("AdministrativeRegion", back_populates="score_snapshots")
 
+
+class CleanupBid(Base):
+    """A monetary pledge offered toward cleaning a reported garbage site."""
+    __tablename__ = "cleanup_bids"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    report_id = Column(String(36), ForeignKey("reports.id"), index=True, nullable=False)
+    bidder_id = Column(String(36), ForeignKey("users.id"), index=True, nullable=False)
+    amount_paise = Column(Integer, nullable=False)
+    currency = Column(String(3), default="INR", nullable=False)
+    message = Column(Text, nullable=True)
+    contact_email = Column(String(255), nullable=False)
+    contact_phone = Column(String(50), nullable=True)
+    status = Column(String(50), default="ACTIVE", nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+
+    report = relationship("Report")
+    bidder = relationship("User")
+
+
+class MunicipalEmployeeInvite(Base):
+    """Municipality-controlled allow-list entry used to register an employee."""
+    __tablename__ = "municipal_employee_invites"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    municipality_id = Column(String(36), ForeignKey("municipalities.id"), index=True, nullable=False)
+    employee_id = Column(String(100), nullable=False)
+    email = Column(String(255), index=True, nullable=False)
+    full_name = Column(String(255), nullable=True)
+    status = Column(String(50), default="INVITED", nullable=False)
+    invited_by_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+    claimed_by_user_id = Column(String(36), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    claimed_at = Column(DateTime, nullable=True)
+
+    municipality = relationship("Municipality")
+    invited_by = relationship("User", foreign_keys=[invited_by_id])
+    claimed_by = relationship("User", foreign_keys=[claimed_by_user_id])
+
+    __table_args__ = (
+        UniqueConstraint("municipality_id", "employee_id", name="uq_municipality_employee_id"),
+        UniqueConstraint("municipality_id", "email", name="uq_municipality_employee_email"),
+    )
+
+
+class MunicipalNotification(Base):
+    """A municipality-level notification visible to all of its registered employees."""
+    __tablename__ = "municipal_notifications"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    municipality_id = Column(String(36), ForeignKey("municipalities.id"), index=True, nullable=False)
+    report_id = Column(String(36), ForeignKey("reports.id"), index=True, nullable=False)
+    notification_type = Column(String(50), default="REPORT_TAGGED", nullable=False)
+    message = Column(Text, nullable=False)
+    acknowledged_at = Column(DateTime, nullable=True)
+    acknowledged_by_id = Column(String(36), ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+
+    municipality = relationship("Municipality")
+    report = relationship("Report")
+    acknowledged_by = relationship("User")
+

@@ -2,11 +2,11 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
-from app.models import Cleanup, Report, Evidence, User, Organization
+from app.models import Cleanup, Report, Evidence, User
 from app.schemas import CleanupCreate, CleanupOut, CleanupVerifyRequest, EvidenceOut
 from app.security import get_current_user
 from app.services.crypto_service import CryptoService
@@ -63,6 +63,15 @@ def create_cleanup(
     report = db.query(Report).filter(Report.id == cleanup_in.report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Target report not found")
+    if report.is_duplicate or report.status in ["CLEANUP_SUBMITTED", "CLEANED_AND_VERIFIED"]:
+        raise HTTPException(status_code=409, detail="This report is not available for cleanup")
+
+    active_cleanup = db.query(Cleanup).filter(
+        Cleanup.report_id == report.id,
+        Cleanup.status.in_(["IN_PROGRESS", "SUBMITTED"]),
+    ).first()
+    if active_cleanup:
+        raise HTTPException(status_code=409, detail="An active cleanup already exists for this report")
 
     # Find initial before-evidence
     before_ev = db.query(Evidence).filter(
@@ -125,6 +134,10 @@ async def submit_cleanup_evidence(
     cleanup = db.query(Cleanup).filter(Cleanup.id == cleanup_id).first()
     if not cleanup:
         raise HTTPException(status_code=404, detail="Cleanup not found")
+    if cleanup.organizer_id != current_user.id and current_user.role != "ADMIN":
+        raise HTTPException(status_code=403, detail="Only the cleanup organizer can submit after-evidence")
+    if cleanup.status != "IN_PROGRESS":
+        raise HTTPException(status_code=409, detail="Cleanup is not accepting after-evidence")
 
     after_bytes = await file.read()
     if not after_bytes:
@@ -242,6 +255,9 @@ def verify_cleanup(
     if not cleanup:
         raise HTTPException(status_code=404, detail="Cleanup not found")
 
+    if cleanup.status in ["VERIFIED", "REJECTED"]:
+        raise HTTPException(status_code=409, detail="Cleanup has already received a final decision")
+
     if not cleanup.after_evidence_id:
         raise HTTPException(status_code=400, detail="Cannot verify cleanup without submitted after-evidence.")
 
@@ -252,6 +268,10 @@ def verify_cleanup(
     cleanup.verified_at = now
 
     report = db.query(Report).filter(Report.id == cleanup.report_id).first()
+
+    if current_user.role == "MUNICIPAL":
+        if not current_user.municipality_id or cleanup.municipality_id != current_user.municipality_id:
+            raise HTTPException(status_code=403, detail="Cleanup is outside your municipal jurisdiction")
 
     if verify_req.status == "VERIFIED":
         if report:
@@ -284,13 +304,18 @@ def verify_cleanup(
         # Update region cleanliness score
         if report:
             ScoringService.calculate_region_score(db, report.administrative_region_id)
+    elif verify_req.status == "REJECTED" and report:
+        # Rejected evidence puts the garbage report back into active listings.
+        report.status = "REOPENED"
+        report.resolved_at = None
+        ScoringService.calculate_region_score(db, report.administrative_region_id)
 
     db.commit()
     db.refresh(cleanup)
 
     AuditService.log(
         db,
-        action="CLEANUP_VERIFIED",
+        action="CLEANUP_REVIEWED",
         entity_name="Cleanup",
         entity_id=cleanup.id,
         actor_id=current_user.id,

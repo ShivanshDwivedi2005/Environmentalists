@@ -54,6 +54,12 @@ backend/uploads/*
 .env
 .env.*
 !.env.example
+secrets/
+credentials*.json
+service-account*.json
+*.pem
+*.p12
+*.key
 
 # Frontend subproject build & modules
 frontend/node_modules/
