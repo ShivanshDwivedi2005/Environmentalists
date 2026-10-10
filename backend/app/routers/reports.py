@@ -33,18 +33,10 @@ def find_nearest_region(db: Session, lat: float, lng: float) -> AdministrativeRe
     """Finds the closest administrative region (preferring WARD level)."""
     regions = db.query(AdministrativeRegion).all()
     if not regions:
-        # Create a fallback default region if none exists
-        default_region = AdministrativeRegion(
-            code="IND-DEFAULT",
-            name="Default Metropolitan Zone",
-            region_type="WARD",
-            center_lat=lat,
-            center_lng=lng
+        raise HTTPException(
+            status_code=503,
+            detail="No administrative region is available. Resolve the device location before submitting the report.",
         )
-        db.add(default_region)
-        db.commit()
-        db.refresh(default_region)
-        return default_region
 
     best_region = regions[0]
     min_dist = float("inf")
@@ -190,10 +182,10 @@ async def create_report(
     if tagged_municipality_id:
         tagged_muni = db.query(Municipality).filter(
             Municipality.id == tagged_municipality_id,
-            Municipality.verification_status == "VERIFIED",
+            Municipality.verification_status.in_(["VERIFIED", "DISCOVERED"]),
         ).first()
         if not tagged_muni:
-            raise HTTPException(status_code=404, detail="Tagged municipality not found or not verified")
+            raise HTTPException(status_code=404, detail="Tagged municipality was not found")
         if not municipality_serves_region(db, tagged_muni, region):
             raise HTTPException(status_code=400, detail="Tagged municipality is not responsible for this area")
         muni = tagged_muni

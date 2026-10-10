@@ -13,7 +13,7 @@ import {
   Sparkles,
   Users,
 } from 'lucide-react';
-import { sceneryPosterUrl, sceneryVideoUrl } from '../lib/scenery';
+import { scenery, sceneryPoster, sceneryWebm } from '../lib/scenery';
 
 interface HomePageProps {
   onSignIn: () => void;
@@ -121,7 +121,7 @@ export function HomePage({ onSignIn, onCreateAccount }: HomePageProps) {
         <section id="top" className="relative flex min-h-[100svh] items-center overflow-hidden pt-24">
           <video
             ref={videoRef}
-            poster={sceneryPosterUrl}
+            poster={sceneryPoster.url}
             autoPlay
             loop
             muted
@@ -129,7 +129,8 @@ export function HomePage({ onSignIn, onCreateAccount }: HomePageProps) {
             aria-hidden="true"
             className="absolute inset-0 h-full w-full object-cover"
           >
-            <source src={sceneryVideoUrl} type="video/mp4" />
+            <source src={sceneryWebm.url} type="video/webm" />
+            <source src={scenery.url} type="video/mp4" />
           </video>
           <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(2,19,14,0.92)_0%,rgba(2,19,14,0.68)_52%,rgba(2,19,14,0.34)_100%)]" />
           <div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(2,6,23,0.78)_0%,transparent_42%)]" />

@@ -21,8 +21,7 @@ export const PollutionMap: React.FC<PollutionMapProps> = ({
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
-    // Default center at Nagpur coordinates
-    const map = L.map(mapContainerRef.current).setView([21.1458, 79.0882], 13);
+    const map = L.map(mapContainerRef.current).fitWorld();
     mapInstanceRef.current = map;
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {

@@ -242,11 +242,31 @@ class CleanupFundingSummary(BaseModel):
 class MunicipalityOut(BaseModel):
     id: str
     name: str
-    official_email: EmailStr
+    official_email: Optional[str] = None
     administrative_region_id: str
     verification_status: str
 
     model_config = {"from_attributes": True}
+
+class LocationResolveRequest(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy: Optional[float] = Field(default=None, ge=0)
+
+class LocationResolutionOut(BaseModel):
+    latitude: float
+    longitude: float
+    accuracy: Optional[float] = None
+    address: str
+    locality: str
+    district: Optional[str] = None
+    state: Optional[str] = None
+    postcode: Optional[str] = None
+    country_code: str
+    administrative_region_id: str
+    municipality: MunicipalityOut
+    source: str
+    attribution: str
 
 class MunicipalEmployeeInviteCreate(BaseModel):
     employee_id: str = Field(min_length=1, max_length=100)

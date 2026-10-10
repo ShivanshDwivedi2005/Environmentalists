@@ -98,7 +98,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </nav>
 
-          {/* User Controls & Demo Persona Switcher */}
+          {/* Authenticated user controls */}
           <div className="flex items-center gap-3">
             {currentUser && (
               <div className="flex items-center gap-2">

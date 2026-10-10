@@ -76,9 +76,25 @@ export interface Report {
 export interface Municipality {
   id: string;
   name: string;
-  official_email: string;
+  official_email?: string | null;
   administrative_region_id: string;
   verification_status: string;
+}
+
+export interface LocationResolution {
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+  address: string;
+  locality: string;
+  district?: string | null;
+  state?: string | null;
+  postcode?: string | null;
+  country_code: string;
+  administrative_region_id: string;
+  municipality: Municipality;
+  source: string;
+  attribution: string;
 }
 
 export interface CleanupBid {

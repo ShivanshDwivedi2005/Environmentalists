@@ -14,8 +14,8 @@ interface AuthScreenProps {
 export function AuthScreen({ onAuthenticated, initialMode = 'login', onBackHome }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
   const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
-  const [email, setEmail] = useState('citizen@ecotrack.org');
-  const [password, setPassword] = useState('password123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [municipalityId, setMunicipalityId] = useState('');
@@ -191,11 +191,6 @@ export function AuthScreen({ onAuthenticated, initialMode = 'login', onBackHome 
             </button>
           </form>
 
-          {mode === 'login' && (
-            <p className="mt-5 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-500">
-              Demo citizen credentials are prefilled. Municipal demo: <strong>officer@nmc.gov.in</strong> with <strong>password123</strong>.
-            </p>
-          )}
         </section>
       </div>
     </main>

@@ -59,14 +59,21 @@ export const MunicipalDashboard: React.FC<MunicipalDashboardProps> = ({
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- synchronize municipal workspace data
     loadMunicipalData();
-  }, [currentUser.id, loadMunicipalData]);
+    if (!hasMunicipalInbox) return;
+    const refreshTimer = window.setInterval(loadMunicipalData, 15000);
+    return () => window.clearInterval(refreshTimer);
+  }, [currentUser.id, hasMunicipalInbox, loadMunicipalData]);
 
   const pendingCleanups = cleanups.filter((c) => c.status === 'SUBMITTED');
   const managedReports = hasMunicipalInbox && taggedReports.length ? taggedReports : reports;
   const activeReports = managedReports.filter((r) => !['CLEANED_AND_VERIFIED', 'CLEANUP_SUBMITTED'].includes(r.status));
 
   const handleAssignCrew = async (reportId: string) => {
-    const crewName = selectedCrew[reportId] || 'NMC Sanitation Rapid Response Team';
+    const crewName = selectedCrew[reportId]?.trim();
+    if (!crewName) {
+      setFeedback('Enter the actual sanitation unit or crew responsible for this report.');
+      return;
+    }
     try {
       setLoadingAction(`assign-${reportId}`);
       await updateReportStatus(reportId, 'ASSIGNED', crewName);
@@ -423,16 +430,13 @@ export const MunicipalDashboard: React.FC<MunicipalDashboardProps> = ({
                     {r.assigned_to ? (
                       <span className="text-emerald-700 font-medium">{r.assigned_to}</span>
                     ) : (
-                      <select
-                        className="text-[11px] border border-slate-300 rounded px-2 py-1 bg-white"
+                      <input
+                        aria-label={`Sanitation unit for ${r.address}`}
+                        placeholder="Enter sanitation unit"
+                        className="min-h-10 w-48 rounded border border-slate-300 bg-white px-2 text-[11px]"
                         value={selectedCrew[r.id] || ''}
                         onChange={(e) => setSelectedCrew({ ...selectedCrew, [r.id]: e.target.value })}
-                      >
-                        <option value="">Select Sanitation Unit</option>
-                        <option value="NMC Central Zone Rapid Action">NMC Central Zone Rapid Action</option>
-                        <option value="NMC West Zone Sanitation Truck">NMC West Zone Sanitation Truck</option>
-                        <option value="Green Earth Volunteer Squad">Green Earth Volunteer Squad</option>
-                      </select>
+                      />
                     )}
                   </td>
                   <td className="p-3">

@@ -85,6 +85,8 @@ export function App() {
     if (currentUserId) {
       // oxlint-disable-next-line react/set-state-in-effect -- synchronize authenticated server data
       refreshAllData();
+      const refreshTimer = window.setInterval(refreshAllData, 15000);
+      return () => window.clearInterval(refreshTimer);
     }
   }, [currentUserId, refreshAllData]);
 
@@ -282,7 +284,7 @@ export function App() {
                           </div>
                           <div className="flex justify-between">
                             <span className="text-slate-500">Authority:</span>
-                            <span className="font-semibold text-slate-800">{selectedReport.municipality_name || 'NMC Nagpur'}</span>
+                            <span className="font-semibold text-slate-800">{selectedReport.municipality_name || 'Pending municipal match'}</span>
                           </div>
                           {selectedReport.assigned_to && (
                             <div className="flex justify-between">

@@ -27,21 +27,23 @@ export function FundingPanel({ report, currentUser }: FundingPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const loadFunding = useCallback(async () => {
-    setLoading(true);
+  const loadFunding = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     setError(null);
     try {
       setSummary(await getCleanupFunding(report.id));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not load cleanup funding.');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [report.id]);
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- load server state for this report
     loadFunding();
+    const refreshTimer = window.setInterval(() => loadFunding(false), 15000);
+    return () => window.clearInterval(refreshTimer);
   }, [loadFunding]);
 
   const submitBid = async (event: React.FormEvent) => {

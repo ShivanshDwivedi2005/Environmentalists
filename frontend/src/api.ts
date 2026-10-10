@@ -5,6 +5,7 @@ import type {
   CleanupFundingSummary,
   EvidenceVerificationResult,
   LeaderboardItem,
+  LocationResolution,
   MunicipalEmployeeInvite,
   MunicipalNotification,
   Municipality,
@@ -182,6 +183,14 @@ export function placeCleanupBid(reportId: string, input: {
 
 export function getMunicipalities(regionId?: string): Promise<Municipality[]> {
   return apiRequest(`/municipalities${regionId ? `?region_id=${encodeURIComponent(regionId)}` : ''}`);
+}
+
+export function resolveDeviceLocation(input: {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+}): Promise<LocationResolution> {
+  return apiRequest('/locations/resolve', jsonRequest('POST', input), true);
 }
 
 export function getMunicipalTaggedReports(): Promise<Report[]> {

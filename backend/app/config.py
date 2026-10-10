@@ -23,6 +23,15 @@ class Settings(BaseSettings):
     
     # AI Engine
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+
+    # User-triggered reverse geocoding. Kept configurable so deployments can move
+    # away from the public service without changing application code.
+    NOMINATIM_BASE_URL: str = os.getenv("NOMINATIM_BASE_URL", "https://nominatim.openstreetmap.org")
+    GEOCODING_USER_AGENT: str = os.getenv(
+        "GEOCODING_USER_AGENT",
+        "EcoTrack/1.0 (+https://github.com/ShivanshDwivedi2005/Environmentalists)",
+    )
+    GEOCODING_CACHE_SECONDS: int = int(os.getenv("GEOCODING_CACHE_SECONDS", "86400"))
     
     model_config = {
         "env_file": ".env",

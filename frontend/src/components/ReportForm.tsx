@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, MapPin, Upload, RefreshCw, AlertTriangle, ShieldCheck, Building2, HandCoins } from 'lucide-react';
-import { createReport, getMunicipalities, placeCleanupBid } from '../api';
-import type { Municipality, Report } from '../types';
+import { createReport, placeCleanupBid, resolveDeviceLocation } from '../api';
+import type { LocationResolution, Report } from '../types';
 
 interface ReportFormProps {
   onReportCreated: (newReport: Report, warning?: string) => void;
@@ -24,16 +24,17 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
   const [captureMethod, setCaptureMethod] = useState<'IN_APP_CAMERA' | 'FILE_UPLOAD'>('IN_APP_CAMERA');
 
   // Geolocation
-  const [latitude, setLatitude] = useState<number>(21.1458);
-  const [longitude, setLongitude] = useState<number>(79.0882);
-  const [accuracy, setAccuracy] = useState<number>(4.5);
-  const [address, setAddress] = useState<string>('Sitabuldi Market Road, Ward 12, Nagpur');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [address, setAddress] = useState<string>('');
+  const [locationResolution, setLocationResolution] = useState<LocationResolution | null>(null);
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'locating' | 'resolved' | 'error'>('idle');
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   // Form fields
   const [description, setDescription] = useState<string>('');
-  const [selectedCategories, setSelectedCategories] = useState<string[]>(['Plastic Waste']);
-  const [severity, setSeverity] = useState<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'>('MEDIUM');
-  const [municipalities, setMunicipalities] = useState<Municipality[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [taggedMunicipalityId, setTaggedMunicipalityId] = useState('');
   const [pledgeAmount, setPledgeAmount] = useState('');
   const [contactPhone, setContactPhone] = useState('');
@@ -44,26 +45,65 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // GPS auto-fetch
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setLatitude(pos.coords.latitude);
-          setLongitude(pos.coords.longitude);
-          setAccuracy(pos.coords.accuracy || 5.0);
-        },
-        (err) => {
-          console.warn('Geolocation query warning, using standard coordinates:', err.message);
-        },
-        { enableHighAccuracy: true, timeout: 5000 }
-      );
-    }
-  }, []);
+    return () => {
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+    };
+  }, [photoPreview]);
 
-  useEffect(() => {
-    getMunicipalities().then(setMunicipalities).catch(() => setMunicipalities([]));
-  }, []);
+  const resolvePhotoLocation = () => {
+    setLocationStatus('locating');
+    setLocationError(null);
+    setLocationResolution(null);
+    setTaggedMunicipalityId('');
+
+    if (!navigator.geolocation) {
+      setLocationStatus('error');
+      setLocationError('This browser does not provide device location. Open EcoTrack in a modern browser with location services enabled.');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const nextLatitude = position.coords.latitude;
+        const nextLongitude = position.coords.longitude;
+        const nextAccuracy = position.coords.accuracy;
+        setLatitude(nextLatitude);
+        setLongitude(nextLongitude);
+        setAccuracy(nextAccuracy);
+        try {
+          const resolved = await resolveDeviceLocation({
+            latitude: nextLatitude,
+            longitude: nextLongitude,
+            accuracy: nextAccuracy,
+          });
+          setLocationResolution(resolved);
+          setAddress(resolved.address);
+          setTaggedMunicipalityId(resolved.municipality.id);
+          setLocationStatus('resolved');
+        } catch (caught) {
+          setLocationStatus('error');
+          setLocationError(caught instanceof Error ? caught.message : 'Could not resolve the responsible municipality.');
+        }
+      },
+      (locationFailure) => {
+        setLocationStatus('error');
+        const recovery = locationFailure.code === locationFailure.PERMISSION_DENIED
+          ? 'Location permission was denied. Enable location access for this site, then try again.'
+          : 'A precise device location could not be obtained. Move to an open area and try again.';
+        setLocationError(recovery);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  };
+
+  const acceptPhoto = (blob: Blob, method: 'IN_APP_CAMERA' | 'FILE_UPLOAD') => {
+    if (photoPreview) URL.revokeObjectURL(photoPreview);
+    setPhotoBlob(blob);
+    setPhotoPreview(URL.createObjectURL(blob));
+    setCaptureMethod(method);
+    resolvePhotoLocation();
+  };
 
   // WebRTC Camera Handler
   const startCamera = async () => {
@@ -104,9 +144,7 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
     canvas.toBlob(
       (blob) => {
         if (blob) {
-          setPhotoBlob(blob);
-          setPhotoPreview(URL.createObjectURL(blob));
-          setCaptureMethod('IN_APP_CAMERA');
+          acceptPhoto(blob, 'IN_APP_CAMERA');
           stopCamera();
         }
       },
@@ -118,9 +156,7 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setPhotoBlob(file);
-      setPhotoPreview(URL.createObjectURL(file));
-      setCaptureMethod('FILE_UPLOAD');
+      acceptPhoto(file, 'FILE_UPLOAD');
     }
   };
 
@@ -140,6 +176,10 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
     }
     if (!description.trim()) {
       setErrorMessage('Please provide a short description of the observed pollution.');
+      return;
+    }
+    if (latitude === null || longitude === null || accuracy === null || !locationResolution) {
+      setErrorMessage('Resolve the image location and responsible municipality before submitting.');
       return;
     }
 
@@ -237,7 +277,18 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
                 </span>
                 <button
                   type="button"
-                  onClick={() => { setPhotoBlob(null); setPhotoPreview(null); }}
+                  onClick={() => {
+                    setPhotoBlob(null);
+                    setPhotoPreview(null);
+                    setLatitude(null);
+                    setLongitude(null);
+                    setAccuracy(null);
+                    setAddress('');
+                    setLocationResolution(null);
+                    setLocationStatus('idle');
+                    setLocationError(null);
+                    setTaggedMunicipalityId('');
+                  }}
                   className="text-rose-600 hover:underline font-semibold"
                 >
                   Retake Photo
@@ -260,38 +311,66 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
                 <Upload className="w-8 h-8 mb-2 text-slate-400" />
                 <span className="font-bold text-xs">Upload from Device</span>
                 <span className="text-[10px] text-slate-500">JPG, PNG up to 10MB</span>
-                <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                <input type="file" accept="image/*" capture="environment" onChange={handleFileUpload} className="hidden" />
               </label>
             </div>
           )}
         </div>
 
-        {/* 2. Geolocation Coordinates */}
+        {/* 2. Device location and live municipal discovery */}
         <div>
           <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-2">
-            2. Verified Geolocation
+            2. Device Location & Responsible Municipality
           </label>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] text-slate-500">GPS Coordinates (Lat / Lng)</label>
-              <div className="flex items-center gap-2 mt-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono">
-                <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{latitude.toFixed(6)}, {longitude.toFixed(6)}</span>
-                <span className="text-[10px] text-slate-400 ml-auto">(±{accuracy}m)</span>
+          {locationStatus === 'idle' && (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+              Select or capture the pollution image first. EcoTrack will then ask for your current device location and identify the local body for that area.
+            </div>
+          )}
+          {locationStatus === 'locating' && (
+            <div role="status" className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+              <RefreshCw className="h-5 w-5 animate-spin" aria-hidden="true" />
+              Fetching precise device coordinates and matching the responsible Indian municipality…
+            </div>
+          )}
+          {locationStatus === 'error' && (
+            <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{locationError}</span>
               </div>
+              <button type="button" onClick={resolvePhotoLocation} className="mt-3 min-h-11 rounded-lg bg-rose-700 px-4 text-xs font-bold text-white hover:bg-rose-800">
+                Try location again
+              </button>
             </div>
-            <div>
-              <label className="text-[11px] text-slate-500">Street / Area Address</label>
-              <input
-                type="text"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                placeholder="e.g. Near Dharampeth square"
-                required
-              />
+          )}
+          {locationStatus === 'resolved' && locationResolution && latitude !== null && longitude !== null && accuracy !== null && (
+            <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white">
+                  <MapPin className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-emerald-950">Location matched</p>
+                  <p className="mt-1 font-mono text-xs text-emerald-800">{latitude.toFixed(6)}, {longitude.toFixed(6)} · accuracy ±{Math.round(accuracy)}m</p>
+                </div>
+                <button type="button" onClick={resolvePhotoLocation} className="min-h-11 rounded-lg px-3 text-xs font-bold text-emerald-800 hover:bg-emerald-100">Refresh</button>
+              </div>
+              <div>
+                <label htmlFor="resolved-address" className="mb-1 block text-xs font-semibold text-slate-700">Resolved address</label>
+                <input id="resolved-address" type="text" value={address} onChange={(event) => setAddress(event.target.value)} required className="min-h-11 w-full rounded-lg border border-emerald-200 bg-white px-3 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100" />
+              </div>
+              <div className="flex items-start gap-2 rounded-lg bg-white p-3 text-sm text-slate-700">
+                <Building2 className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" aria-hidden="true" />
+                <div>
+                  <p className="font-bold">Suggested local body: {locationResolution.municipality.name}</p>
+                  <p className="mt-1 text-xs text-slate-500">{[locationResolution.district, locationResolution.state].filter(Boolean).join(', ')}</p>
+                  <p className="mt-1 text-xs text-slate-500">Source: {locationResolution.source} · {locationResolution.attribution}</p>
+                </div>
+              </div>
+              <p className="text-xs leading-5 text-slate-500">Your coordinates are sent only after you choose an image. The municipal suggestion is based on the closest OpenStreetMap administrative address and can be corrected when local boundary data changes.</p>
             </div>
-          </div>
+          )}
         </div>
 
         {/* 3. Waste Categorization */}
@@ -320,9 +399,9 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
           </div>
         </div>
 
-        {/* 4. Description & Severity */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="sm:col-span-2">
+        {/* 4. Description */}
+        <div>
+          <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
               Description & Visual Landmark
             </label>
@@ -336,24 +415,7 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
-              Estimated Severity
-            </label>
-            <select
-              value={severity}
-              onChange={(e) => setSeverity(e.target.value as any)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-            >
-              <option value="LOW">LOW (Scattered litter)</option>
-              <option value="MEDIUM">MEDIUM (Moderate pile)</option>
-              <option value="HIGH">HIGH (Major dumping)</option>
-              <option value="CRITICAL">CRITICAL (Hazardous / Drain blocking)</option>
-            </select>
-            <p className="text-[10px] text-slate-400 mt-1">
-              *The AI engine will cross-evaluate severity and edge clutter upon upload.
-            </p>
-          </div>
+          <p className="mt-1 text-xs text-slate-500">Severity is calculated from the submitted image by the backend analysis service.</p>
         </div>
 
         {/* 5. Municipal notification and optional cleanup pledge */}
@@ -366,14 +428,15 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
               id="municipality-tag"
               value={taggedMunicipalityId}
               onChange={(event) => setTaggedMunicipalityId(event.target.value)}
+              disabled={!locationResolution}
               className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-xs outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100"
             >
-              <option value="">Auto-assign without notification</option>
-              {municipalities.map((municipality) => (
-                <option key={municipality.id} value={municipality.id}>{municipality.name}</option>
-              ))}
+              <option value="">Do not notify a municipality</option>
+              {locationResolution && (
+                <option value={locationResolution.municipality.id}>{locationResolution.municipality.name}</option>
+              )}
             </select>
-            <p className="mt-1 text-[10px] leading-4 text-slate-500">An explicit tag creates a notification for every registered employee of that municipality.</p>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">The live location match is selected automatically. Keeping it selected creates a notification visible to that municipality's registered employees.</p>
           </div>
 
           <div>
@@ -401,7 +464,7 @@ export const ReportForm: React.FC<ReportFormProps> = ({ onReportCreated, onCance
           )}
           <button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || locationStatus !== 'resolved'}
             className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
           >
             {isSubmitting ? (
