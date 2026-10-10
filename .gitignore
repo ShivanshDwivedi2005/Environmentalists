@@ -30,3 +30,38 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# Databases & Local Uploads
+*.db
+*.sqlite3
+backend/ecotrack.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+secrets/
+credentials*.json
+service-account*.json
+*.pem
+*.p12
+*.key
+
+# Frontend subproject build & modules
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
