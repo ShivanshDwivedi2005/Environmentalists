@@ -1,4 +1,5 @@
 import os
+import secrets
 from pathlib import Path
 from pydantic_settings import BaseSettings
 
@@ -10,8 +11,8 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api"
     
     # Security
-    SECRET_KEY: str = os.getenv("SECRET_KEY", "ecotrack_super_secure_secret_key_2026_change_in_production")
-    SIGNING_KEY: str = os.getenv("SIGNING_KEY", "ecotrack_manifest_hmac_signing_key_987654321")
+    SECRET_KEY: str = os.getenv("SECRET_KEY") or secrets.token_urlsafe(48)
+    SIGNING_KEY: str = os.getenv("SIGNING_KEY") or secrets.token_urlsafe(48)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     

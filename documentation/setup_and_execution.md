@@ -23,9 +23,9 @@ PROJECT_NAME="EcoTrack"
 VERSION="1.0.0"
 API_V1_STR="/api"
 
-# Cryptographic and JWT Secrets (Override in production)
-SECRET_KEY="ecotrack_super_secure_secret_key_2026_change_in_production"
-SIGNING_KEY="ecotrack_manifest_hmac_signing_key_987654321"
+# Cryptographic and JWT secrets (use separate, randomly generated values)
+SECRET_KEY="<generate-a-long-random-value>"
+SIGNING_KEY="<generate-a-different-long-random-value>"
 ALGORITHM="HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES=10080
 
